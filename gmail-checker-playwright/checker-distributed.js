@@ -10,7 +10,7 @@ const path = require('path');
 
 // ==================== 配置 ====================
 const CONFIG = {
-  REQUEST_DELAY: 500,         // 请求间隔 (ms) - 保守设置避免降级
+  REQUEST_DELAY: parseInt(process.env.REQUEST_DELAY) || 500,  // 从环境变量读取，默认 500ms
   PROBE_INTERVAL: 50,         // 每 N 个请求做一次探针
   MAX_CONSECUTIVE_DEGRADE: 5, // 连续降级 N 次才刷新 session
   SESSION_REFRESH_ERRORS: 3,  // 连续错误 N 次刷新 session
@@ -26,11 +26,13 @@ const inputFile = process.argv[2];
 const outputDir = process.argv[3] || __dirname;
 const AVAILABLE_FILE = path.join(outputDir, 'available.txt');
 const FAILED_FILE = path.join(outputDir, 'failed.txt');
+const DEGRADED_FILE = path.join(outputDir, 'degraded.txt');  // 降级未确认的用户名，可重试
 const PROGRESS_FILE = path.join(outputDir, 'progress.json');
 const LOG_FILE = path.join(outputDir, 'checker.log');
 
 // ==================== 全局状态 ====================
-let availableCount = 0, failedCount = 0, totalChecked = 0;
+let availableCount = 0, failedCount = 0, degradedCount = 0, totalChecked = 0;
+let originalTotal = 0;  // 原始总数（用于正确计算进度）
 const processed = new Set();
 let allUsernames = [];
 let isShuttingDown = false;
@@ -55,6 +57,8 @@ function saveProgress() {
       totalChecked,
       availableCount,
       failedCount,
+      degradedCount,
+      originalTotal,
       processed: Array.from(processed),
       timestamp: new Date().toISOString()
     };
@@ -70,7 +74,9 @@ function loadProgress() {
       totalChecked = data.totalChecked || 0;
       availableCount = data.availableCount || 0;
       failedCount = data.failedCount || 0;
-      log(`恢复进度: ${totalChecked} 已处理, ${availableCount} 可用, ${failedCount} 失败`);
+      degradedCount = data.degradedCount || 0;
+      originalTotal = data.originalTotal || 0;
+      log(`恢复进度: ${totalChecked} 已处理, ${availableCount} 可用, ${failedCount} 失败, ${degradedCount} 降级`);
     }
   } catch {}
 }
@@ -78,9 +84,10 @@ function loadProgress() {
 function getStats() {
   const elapsed = (Date.now() - startTime) / 1000 || 1;
   const speed = totalChecked / elapsed;
-  const remaining = allUsernames.length - totalChecked;
+  const total = originalTotal || allUsernames.length;
+  const remaining = total - totalChecked;
   const eta = remaining / (speed || 1);
-  return { elapsed, speed, remaining, eta };
+  return { elapsed, speed, remaining, eta, total };
 }
 
 function gracefulExit() {
@@ -89,7 +96,7 @@ function gracefulExit() {
   log('保存进度并退出...');
   saveProgress();
   const { speed } = getStats();
-  log(`最终统计: ${totalChecked} 已处理 | ✅${availableCount} ❌${failedCount} | ${speed.toFixed(2)}/s`);
+  log(`最终统计: ${totalChecked} 已处理 | ✅${availableCount} ❌${failedCount} ⚠️${degradedCount} | ${speed.toFixed(2)}/s`);
   process.exit(0);
 }
 
@@ -370,8 +377,13 @@ async function main() {
   loadProgress();
 
   // 读取用户名
-  allUsernames = fs.readFileSync(inputFile, 'utf-8')
-    .split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#') && !processed.has(s));
+  const allRaw = fs.readFileSync(inputFile, 'utf-8')
+    .split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'));
+  
+  // 记录原始总数（首次运行时）
+  if (!originalTotal) originalTotal = allRaw.length + processed.size;
+  
+  allUsernames = allRaw.filter(s => !processed.has(s));
 
   if (allUsernames.length === 0) {
     log('✅ 全部完成');
@@ -490,11 +502,10 @@ async function main() {
         // 自适应减速：降级时增加延迟
         currentDelay = Math.min(currentDelay * 1.3, 2000);
         
-        if (degradeCount <= 2) {
-          // 前 2 次：短暂等待重试
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
+        // 渐进式退避：降级次数越多等越久
+        const backoffMs = Math.min(2000 + (degradeCount - 1) * 1000, 6000);
+        log(`降级 #${degradeCount}: ${username}, 等待 ${backoffMs}ms`);
+        await new Promise(r => setTimeout(r, backoffMs));
 
         if (degradeCount >= CONFIG.MAX_CONSECUTIVE_DEGRADE) {
           log(`⚠️ 连续降级 ${degradeCount} 次，刷新 session...`);
@@ -549,6 +560,11 @@ async function main() {
       appendToFile(AVAILABLE_FILE, username);
       availableCount++;
       log(`✅ ${username} — 可用!`);
+    } else if (result.status === 'degraded') {
+      // 降级未确认 — 单独记录，可以后续重试
+      appendToFile(DEGRADED_FILE, username);
+      degradedCount++;
+      log(`⚠️ ${username} — 降级未确认 (可重试)`);
     } else {
       appendToFile(FAILED_FILE, `${username}\t${result.status}${result.reason ? ':' + result.reason : ''}`);
       failedCount++;
@@ -558,9 +574,9 @@ async function main() {
     // 定期保存和报告
     if (totalChecked % CONFIG.SAVE_INTERVAL === 0) {
       saveProgress();
-      const { speed, remaining, eta } = getStats();
+      const { speed, remaining, eta, total } = getStats();
       const etaStr = eta > 3600 ? `${(eta/3600).toFixed(1)}h` : `${(eta/60).toFixed(0)}m`;
-      log(`📊 ${totalChecked}/${allUsernames.length} | ${speed.toFixed(2)}/s | ✅${availableCount} ❌${failedCount} | ETA: ${etaStr}`);
+      log(`📊 ${totalChecked}/${total} | ${speed.toFixed(2)}/s | ✅${availableCount} ❌${failedCount} ⚠️${degradedCount} | ETA: ${etaStr}`);
     }
   }
 
@@ -569,7 +585,7 @@ async function main() {
 
   const { elapsed, speed } = getStats();
   log('='.repeat(50));
-  log(`✅ 可用: ${availableCount}  ❌ 失败: ${failedCount}  📊 总计: ${totalChecked}`);
+  log(`✅ 可用: ${availableCount}  ❌ 失败: ${failedCount}  ⚠️ 降级: ${degradedCount}  📊 总计: ${totalChecked}`);
   log(`⏱️ ${elapsed.toFixed(0)}s | ${speed.toFixed(2)} req/s`);
   log('='.repeat(50));
 

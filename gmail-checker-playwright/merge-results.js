@@ -20,7 +20,8 @@ if (!fs.existsSync(outputDir)) {
 
 const availableSet = new Set();
 const failedSet = new Set();
-let totalProgress = { totalChecked: 0, availableCount: 0, failedCount: 0 };
+const degradedSet = new Set();
+let totalProgress = { totalChecked: 0, availableCount: 0, failedCount: 0, degradedCount: 0 };
 
 // 遍历所有子目录
 const subdirs = fs.readdirSync(resultsDir).filter(f => {
@@ -47,6 +48,13 @@ for (const subdir of subdirs) {
     lines.forEach(l => failedSet.add(l.trim()));
   }
   
+  // 读取 degraded.txt
+  const degradedFile = path.join(subdirPath, 'degraded.txt');
+  if (fs.existsSync(degradedFile)) {
+    const lines = fs.readFileSync(degradedFile, 'utf-8').split('\n').filter(s => s.trim());
+    lines.forEach(l => degradedSet.add(l.trim()));
+  }
+  
   // 读取 progress.json
   const progressFile = path.join(subdirPath, 'progress.json');
   if (fs.existsSync(progressFile)) {
@@ -56,22 +64,26 @@ for (const subdir of subdirs) {
     } catch {}
   }
   
-  console.log(`  ${subdir}: ✅${availableSet.size - totalProgress.availableCount} ❌${failedSet.size - totalProgress.failedCount}`);
+  console.log(`  ${subdir}: ✅${availableSet.size - totalProgress.availableCount} ❌${failedSet.size - totalProgress.failedCount} ⚠️${degradedSet.size - totalProgress.degradedCount}`);
   totalProgress.availableCount = availableSet.size;
   totalProgress.failedCount = failedSet.size;
+  totalProgress.degradedCount = degradedSet.size;
 }
 
 // 写入合并结果
 const finalAvailable = path.join(outputDir, 'available.txt');
 const finalFailed = path.join(outputDir, 'failed.txt');
+const finalDegraded = path.join(outputDir, 'degraded.txt');
 const finalSummary = path.join(outputDir, 'summary.json');
 
 fs.writeFileSync(finalAvailable, Array.from(availableSet).join('\n'));
 fs.writeFileSync(finalFailed, Array.from(failedSet).join('\n'));
+fs.writeFileSync(finalDegraded, Array.from(degradedSet).join('\n'));
 fs.writeFileSync(finalSummary, JSON.stringify({
   totalChecked: totalProgress.totalChecked,
   availableCount: availableSet.size,
   failedCount: failedSet.size,
+  degradedCount: degradedSet.size,
   mergedAt: new Date().toISOString(),
   sources: subdirs.length
 }, null, 2));
@@ -79,6 +91,7 @@ fs.writeFileSync(finalSummary, JSON.stringify({
 console.log('\n' + '='.repeat(50));
 console.log(`✅ 可用: ${availableSet.size}`);
 console.log(`❌ 失败: ${failedSet.size}`);
+console.log(`⚠️ 降级: ${degradedSet.size} (可重试)`);
 console.log(`📊 总计: ${totalProgress.totalChecked}`);
 console.log('='.repeat(50));
 console.log(`\n结果保存在 ${outputDir}/`);
