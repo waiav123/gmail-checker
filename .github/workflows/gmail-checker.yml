@@ -123,8 +123,12 @@ jobs:
     needs: [check-round1, check-round2]
     runs-on: ubuntu-latest
     if: always()
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
