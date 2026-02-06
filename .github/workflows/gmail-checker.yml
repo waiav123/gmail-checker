@@ -145,3 +145,15 @@ jobs:
           else
             echo "无" >> $GITHUB_STEP_SUMMARY
           fi
+      
+      - name: Commit results to repo
+        run: |
+          mkdir -p results
+          cp merged-results/available.txt results/available.txt 2>/dev/null || true
+          cp merged-results/failed.txt results/failed.txt 2>/dev/null || true
+          cp merged-results/summary.json results/summary.json 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/
+          git diff --cached --quiet || git commit -m "📊 Results: $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git push
