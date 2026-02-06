@@ -10,7 +10,7 @@ const path = require('path');
 
 // ==================== 配置 ====================
 const CONFIG = {
-  REQUEST_DELAY: 350,         // 请求间隔 (ms) - 保守设置避免降级
+  REQUEST_DELAY: 500,         // 请求间隔 (ms) - 保守设置避免降级
   PROBE_INTERVAL: 50,         // 每 N 个请求做一次探针
   MAX_CONSECUTIVE_DEGRADE: 5, // 连续降级 N 次才刷新 session
   SESSION_REFRESH_ERRORS: 3,  // 连续错误 N 次刷新 session
@@ -455,6 +455,7 @@ async function main() {
   let consecutiveErrors = 0;
   let degradeCount = 0;
   let requestCount = 0;
+  let currentDelay = CONFIG.REQUEST_DELAY; // 自适应延迟
 
   for (let i = 0; i < allUsernames.length && !isShuttingDown; i++) {
     const username = allUsernames[i];
@@ -479,23 +480,29 @@ async function main() {
         }
       }
 
-      await new Promise(r => setTimeout(r, CONFIG.REQUEST_DELAY));
+      await new Promise(r => setTimeout(r, currentDelay));
       result = await checkUsernameAPI(session.page, username, session.xsrfToken, session.tlToken);
       requestCount++;
 
       if (result.status === 'degraded') {
         degradeCount++;
         retries++;
-        const delay = 2000 + degradeCount * 1000;
-        log(`降级 #${degradeCount}: ${username}, 等待 ${delay}ms`);
-        await new Promise(r => setTimeout(r, delay));
+        // 自适应减速：降级时增加延迟
+        currentDelay = Math.min(currentDelay * 1.3, 2000);
+        
+        if (degradeCount <= 2) {
+          // 前 2 次：短暂等待重试
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
 
         if (degradeCount >= CONFIG.MAX_CONSECUTIVE_DEGRADE) {
-          log('⚠️ 连续降级过多，刷新 session...');
+          log(`⚠️ 连续降级 ${degradeCount} 次，刷新 session...`);
           try { await session.ctx.close(); } catch {}
           session = await setupSession(browser);
           if (!session.ok) break;
           degradeCount = 0;
+          currentDelay = CONFIG.REQUEST_DELAY; // 刷新后重置延迟
         }
         continue;
       }
@@ -522,7 +529,10 @@ async function main() {
         continue;
       }
 
-      // 成功获取结果
+      // 成功：自适应加速恢复
+      degradeCount = 0;
+      consecutiveErrors = 0;
+      currentDelay = Math.max(currentDelay * 0.95, CONFIG.REQUEST_DELAY);
       break;
     }
 
@@ -534,8 +544,6 @@ async function main() {
     // 记录结果
     processed.add(username);
     totalChecked++;
-    degradeCount = 0;
-    consecutiveErrors = 0;
 
     if (result.status === 'available') {
       appendToFile(AVAILABLE_FILE, username);
