@@ -1,137 +1,149 @@
 # Gmail 用户名检查器 - 分布式 GitHub Actions Workflow
-# 
-# 使用方法:
-# 1. 先在本地运行: node gmail-checker-playwright/split-usernames.js <用户名文件> <批次数>
-# 2. 将 batches/ 目录提交到仓库
-# 3. 在 GitHub Actions 页面手动触发此 workflow
-# 4. 完成后下载 Artifacts 并运行: node gmail-checker-playwright/merge-results.js
+# 40 batch 分两轮跑，每轮 20 并发，一次触发自动完成全部
+# 结果自动提交回仓库
 
 name: Gmail Username Checker
 
 on:
   workflow_dispatch:
     inputs:
-      batch_count:
-        description: '并行批次数量 (需要先分割用户名文件)'
-        required: true
-        default: '5'
-        type: choice
-        options:
-          - '3'
-          - '5'
-          - '10'
-          - '15'
-          - '20'
       request_delay:
         description: '请求间隔 (ms) - 越大越稳定'
         required: true
-        default: '400'
+        default: '500'
         type: choice
         options:
-          - '300'
-          - '350'
           - '400'
           - '500'
+          - '600'
 
 jobs:
-  check:
+  # ========== 第一轮：batch 0-19 ==========
+  check-round1:
     runs-on: ubuntu-latest
-    timeout-minutes: 300  # 5 小时超时
-    
+    timeout-minutes: 240
     strategy:
       matrix:
         batch: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
-      fail-fast: false  # 一个失败不影响其他
-      max-parallel: 20  # 最大并行数
-    
+      fail-fast: false
+      max-parallel: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: gmail-checker-playwright/package-lock.json
-      
-      - name: Install dependencies
+      - name: Install deps
         working-directory: gmail-checker-playwright
         run: npm ci
-      
-      - name: Install Playwright browsers
+      - name: Install Playwright
         working-directory: gmail-checker-playwright
         run: npx playwright install chromium --with-deps
-      
       - name: Install xvfb
         run: sudo apt-get install -y xvfb
-      
-      - name: Check batch file exists
-        id: check_batch
+      - name: Check batch exists
+        id: check
         run: |
           if [ -f "gmail-checker-playwright/batches/batch-${{ matrix.batch }}.txt" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "✅ batch-${{ matrix.batch }}.txt 存在"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ batch-${{ matrix.batch }}.txt 不存在，跳过"
           fi
-      
       - name: Run checker
-        if: steps.check_batch.outputs.exists == 'true'
+        if: steps.check.outputs.exists == 'true'
         working-directory: gmail-checker-playwright
         run: |
           mkdir -p results-${{ matrix.batch }}
           xvfb-run --auto-servernum node checker-distributed.js batches/batch-${{ matrix.batch }}.txt results-${{ matrix.batch }}
-        env:
-          REQUEST_DELAY: ${{ github.event.inputs.request_delay }}
-        timeout-minutes: 60
-        continue-on-error: true  # 即使失败也上传结果
-      
+        timeout-minutes: 210
+        continue-on-error: true
       - name: Upload results
-        if: steps.check_batch.outputs.exists == 'true'
+        if: always() && steps.check.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: results-batch-${{ matrix.batch }}
-          path: |
-            gmail-checker-playwright/results-${{ matrix.batch }}/
+          path: gmail-checker-playwright/results-${{ matrix.batch }}/
           retention-days: 7
           if-no-files-found: warn
 
-  # 合并所有结果
-  merge:
-    needs: check
+  # ========== 第二轮：batch 20-39 ==========
+  check-round2:
+    needs: check-round1
+    if: always()
     runs-on: ubuntu-latest
-    if: always()  # 即使部分 job 失败也运行
-    
+    timeout-minutes: 240
+    strategy:
+      matrix:
+        batch: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+      fail-fast: false
+      max-parallel: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+          cache: 'npm'
+          cache-dependency-path: gmail-checker-playwright/package-lock.json
+      - name: Install deps
+        working-directory: gmail-checker-playwright
+        run: npm ci
+      - name: Install Playwright
+        working-directory: gmail-checker-playwright
+        run: npx playwright install chromium --with-deps
+      - name: Install xvfb
+        run: sudo apt-get install -y xvfb
+      - name: Check batch exists
+        id: check
+        run: |
+          if [ -f "gmail-checker-playwright/batches/batch-${{ matrix.batch }}.txt" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Run checker
+        if: steps.check.outputs.exists == 'true'
+        working-directory: gmail-checker-playwright
+        run: |
+          mkdir -p results-${{ matrix.batch }}
+          xvfb-run --auto-servernum node checker-distributed.js batches/batch-${{ matrix.batch }}.txt results-${{ matrix.batch }}
+        timeout-minutes: 210
+        continue-on-error: true
+      - name: Upload results
+        if: always() && steps.check.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-batch-${{ matrix.batch }}
+          path: gmail-checker-playwright/results-${{ matrix.batch }}/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ========== 合并结果 ==========
+  merge:
+    needs: [check-round1, check-round2]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: all-results
           pattern: results-batch-*
-      
       - name: Merge results
         working-directory: gmail-checker-playwright
         run: |
           mkdir -p ../merged-results
           node merge-results.js ../all-results ../merged-results
-      
       - name: Upload merged results
         uses: actions/upload-artifact@v4
         with:
           name: merged-results
           path: merged-results/
           retention-days: 30
-      
       - name: Show summary
         run: |
           echo "## 📊 检查结果" >> $GITHUB_STEP_SUMMARY
@@ -141,11 +153,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ✅ 可用用户名" >> $GITHUB_STEP_SUMMARY
           if [ -f "merged-results/available.txt" ]; then
-            head -20 merged-results/available.txt >> $GITHUB_STEP_SUMMARY
+            head -50 merged-results/available.txt >> $GITHUB_STEP_SUMMARY
           else
             echo "无" >> $GITHUB_STEP_SUMMARY
           fi
-      
       - name: Commit results to repo
         run: |
           mkdir -p results
