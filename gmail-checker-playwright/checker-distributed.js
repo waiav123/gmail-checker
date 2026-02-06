@@ -157,7 +157,9 @@ async function setupSession(browser) {
   const setupStart = Date.now();
 
   const ctx = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
   });
   const page = await ctx.newPage();
   page.setDefaultTimeout(30000);
@@ -176,66 +178,156 @@ async function setupSession(browser) {
     }
   });
 
-  // 打开注册页
-  await page.goto('https://accounts.google.com/signup/v2/webcreateaccount?flowName=GlifWebSignIn&flowEntry=SignUp',
+  // 辅助函数：点击下一步按钮（兼容中英文）
+  async function clickNext() {
+    const btn = page.locator('button:has-text("Next"), button:has-text("下一步")').first();
+    await btn.click();
+  }
+
+  // 辅助函数：等待并记录当前页面
+  async function logPage(step) {
+    const url = page.url();
+    const title = await page.title().catch(() => '');
+    log(`[${step}] URL: ${url.substring(0, 80)}... | Title: ${title.substring(0, 50)}`);
+  }
+
+  // Step 1: 打开注册页
+  await page.goto('https://accounts.google.com/signup/v2/webcreateaccount?flowName=GlifWebSignIn&flowEntry=SignUp&hl=en',
     { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForTimeout(3000);
+  await logPage('打开注册页');
 
-  // 填名字
+  // Step 2: 填名字
   try {
-    const ni = page.locator('input[type="text"]:visible');
-    if (await ni.count() >= 2) { await ni.nth(0).fill('Test'); await ni.nth(1).fill('User'); }
-    else if (await ni.count() >= 1) { await ni.nth(0).fill('Test'); }
+    const nameInputs = page.locator('input[type="text"]:visible');
+    const count = await nameInputs.count();
+    log(`找到 ${count} 个文本输入框`);
+    if (count >= 2) {
+      await nameInputs.nth(0).fill('Test');
+      await nameInputs.nth(1).fill('User');
+    } else if (count >= 1) {
+      await nameInputs.nth(0).fill('Test User');
+    }
     await page.waitForTimeout(500);
-    await page.locator('button:has-text("下一步"), button:has-text("Next")').click();
+    await clickNext();
     await page.waitForTimeout(4000);
+    await logPage('填名字后');
   } catch (e) { log(`填名字失败: ${e.message}`); }
 
-  // 填生日
-  try {
-    await page.waitForSelector('input', { timeout: 10000 });
-    await page.locator('input').first().fill('1990');
-    await page.waitForTimeout(300);
-    await page.locator('[role="combobox"]').first().click();
-    await page.waitForTimeout(500);
-    await page.locator('[role="listbox"]:visible [role="option"]').first().click();
-    await page.waitForTimeout(500);
-    await page.locator('input').nth(1).fill('15');
-    await page.waitForTimeout(300);
-    await page.locator('[role="combobox"]').nth(1).click();
-    await page.waitForTimeout(500);
-    await page.locator('[role="listbox"]:visible [role="option"]').nth(1).click();
-    await page.waitForTimeout(500);
-    await page.locator('button:has-text("下一步"), button:has-text("Next")').click();
-    await page.waitForTimeout(4000);
-  } catch (e) { log(`填生日失败: ${e.message}`); }
+  // Step 3: 填生日和性别
+  // 检查是否在生日页面
+  const currentUrl = page.url();
+  if (currentUrl.includes('birthday') || currentUrl.includes('birthdaygender')) {
+    log('检测到生日页面，开始填写...');
+    try {
+      // 等待页面加载
+      await page.waitForSelector('input', { timeout: 10000 });
+      
+      // 找到所有输入框和下拉框
+      const inputs = page.locator('input:visible');
+      const comboboxes = page.locator('[role="combobox"]:visible, select:visible');
+      const inputCount = await inputs.count();
+      const comboCount = await comboboxes.count();
+      log(`生日页面: ${inputCount} 个输入框, ${comboCount} 个下拉框`);
 
-  // 选自定义用户名
+      // 月份下拉框（通常是第一个 combobox）
+      if (comboCount > 0) {
+        await comboboxes.nth(0).click();
+        await page.waitForTimeout(500);
+        // 选择第一个选项（January）
+        const options = page.locator('[role="option"]:visible, option:visible');
+        if (await options.count() > 0) {
+          await options.nth(1).click(); // 跳过 placeholder，选 January
+          await page.waitForTimeout(300);
+        }
+      }
+
+      // 日期输入框
+      if (inputCount > 0) {
+        // 找到 day 输入框（通常标签包含 Day）
+        const dayInput = page.locator('input[aria-label*="Day" i], input[aria-label*="日" i]').first();
+        if (await dayInput.count() > 0) {
+          await dayInput.fill('15');
+        } else {
+          // fallback: 第一个数字输入框
+          await inputs.nth(0).fill('15');
+        }
+        await page.waitForTimeout(200);
+      }
+
+      // 年份输入框
+      const yearInput = page.locator('input[aria-label*="Year" i], input[aria-label*="年" i]').first();
+      if (await yearInput.count() > 0) {
+        await yearInput.fill('1990');
+      } else if (inputCount > 1) {
+        await inputs.nth(inputCount - 1).fill('1990');
+      }
+      await page.waitForTimeout(200);
+
+      // 性别下拉框（通常是第二个 combobox）
+      if (comboCount > 1) {
+        await comboboxes.nth(1).click();
+        await page.waitForTimeout(500);
+        const genderOptions = page.locator('[role="option"]:visible');
+        if (await genderOptions.count() > 1) {
+          await genderOptions.nth(1).click(); // 选第一个非空选项
+          await page.waitForTimeout(300);
+        }
+      }
+
+      await page.waitForTimeout(500);
+      await clickNext();
+      await page.waitForTimeout(5000);
+      await logPage('填生日后');
+    } catch (e) { log(`填生日失败: ${e.message}`); }
+  }
+
+  // Step 4: 处理用户名选择页面
+  // 可能直接到用户名页面，也可能需要选择 "Create your own"
   await page.waitForTimeout(2000);
-  try {
-    const radios = page.locator('[role="radio"], input[type="radio"]');
-    if (await radios.count() > 0) {
-      await radios.nth((await radios.count()) - 1).click();
-      await page.waitForTimeout(1000);
-    }
-  } catch {}
+  await logPage('用户名页面前');
 
-  // 触发一次 API 请求来获取 tokens
+  // 检查是否有 radio 按钮（选择用户名方式）
   try {
-    const input = page.locator('input[type="text"]:visible').first();
-    await input.fill(`sessioninit${Date.now() % 10000}`);
-    await page.waitForTimeout(300);
-    await page.locator('button:has-text("下一步"), button:has-text("Next")').click();
-    await page.waitForTimeout(4000);
-    if (page.url().includes('/password')) {
-      await page.goBack();
-      await page.waitForTimeout(3000);
-      try {
-        const r = page.locator('[role="radio"]');
-        if (await r.count() > 0) { await r.nth((await r.count())-1).click(); await page.waitForTimeout(500); }
-      } catch {}
+    const radios = page.locator('[role="radio"]');
+    const radioCount = await radios.count();
+    log(`找到 ${radioCount} 个 radio 按钮`);
+    if (radioCount > 0) {
+      // 选最后一个（通常是 "Create your own Gmail address"）
+      await radios.nth(radioCount - 1).click();
+      await page.waitForTimeout(1000);
+      log('已选择自定义用户名选项');
     }
-  } catch {}
+  } catch (e) { log(`选择 radio 失败: ${e.message}`); }
+
+  // Step 5: 输入一个用户名触发 API 请求获取 tokens
+  try {
+    const usernameInput = page.locator('input[type="text"]:visible').first();
+    if (await usernameInput.count() > 0) {
+      await usernameInput.fill(`testinit${Date.now() % 100000}`);
+      await page.waitForTimeout(500);
+      await clickNext();
+      await page.waitForTimeout(4000);
+      await logPage('提交用户名后');
+
+      // 如果跳到了密码页，说明用户名可用，需要返回
+      if (page.url().includes('/password')) {
+        log('跳到密码页，返回用户名页...');
+        await page.goBack();
+        await page.waitForTimeout(3000);
+        // 重新选择自定义用户名
+        try {
+          const r = page.locator('[role="radio"]');
+          if (await r.count() > 0) {
+            await r.nth((await r.count()) - 1).click();
+            await page.waitForTimeout(500);
+          }
+        } catch {}
+      }
+    } else {
+      log('⚠️ 没有找到用户名输入框！');
+    }
+  } catch (e) { log(`触发 token 失败: ${e.message}`); }
 
   // 从页面提取 tokens
   try {
@@ -255,6 +347,7 @@ async function setupSession(browser) {
   const setupTime = ((Date.now() - setupStart) / 1000).toFixed(1);
   const ok = !!(xsrfToken && tlToken);
   log(`Session ${ok ? '✅' : '❌'} ${setupTime}s | XSRF: ${xsrfToken.substring(0, 15)}... | TL: ${tlToken.substring(0, 15)}...`);
+  log(`最终页面: ${page.url()}`);
 
   return { page, ctx, xsrfToken, tlToken, ok };
 }
