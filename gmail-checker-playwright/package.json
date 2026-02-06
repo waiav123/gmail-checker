@@ -1,0 +1,13 @@
+{
+  "name": "gmail-checker-playwright",
+  "version": "1.0.0",
+  "description": "Gmail 用户名可用性检查器 - Playwright 版本",
+  "main": "checker-auto.js",
+  "scripts": {
+    "start": "node checker-auto.js",
+    "check": "node checker-auto.js"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

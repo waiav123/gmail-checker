@@ -1,0 +1,142 @@
+# Gmail 用户名检查器 - 分布式 GitHub Actions Workflow
+# 
+# 使用方法:
+# 1. 先在本地运行: node gmail-checker-playwright/split-usernames.js <用户名文件> <批次数>
+# 2. 将 batches/ 目录提交到仓库
+# 3. 在 GitHub Actions 页面手动触发此 workflow
+# 4. 完成后下载 Artifacts 并运行: node gmail-checker-playwright/merge-results.js
+
+name: Gmail Username Checker
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_count:
+        description: '并行批次数量 (需要先分割用户名文件)'
+        required: true
+        default: '5'
+        type: choice
+        options:
+          - '3'
+          - '5'
+          - '10'
+          - '15'
+          - '20'
+      request_delay:
+        description: '请求间隔 (ms) - 越大越稳定'
+        required: true
+        default: '400'
+        type: choice
+        options:
+          - '300'
+          - '350'
+          - '400'
+          - '500'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300  # 5 小时超时
+    
+    strategy:
+      matrix:
+        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # 根据 batch_count 调整
+      fail-fast: false  # 一个失败不影响其他
+      max-parallel: 20  # 最大并行数
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gmail-checker-playwright/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: gmail-checker-playwright
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        working-directory: gmail-checker-playwright
+        run: npx playwright install chromium --with-deps
+      
+      - name: Check batch file exists
+        id: check_batch
+        run: |
+          if [ -f "gmail-checker-playwright/batches/batch-${{ matrix.batch }}.txt" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ batch-${{ matrix.batch }}.txt 存在"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ batch-${{ matrix.batch }}.txt 不存在，跳过"
+          fi
+      
+      - name: Run checker
+        if: steps.check_batch.outputs.exists == 'true'
+        working-directory: gmail-checker-playwright
+        run: |
+          mkdir -p results-${{ matrix.batch }}
+          node checker-distributed.js batches/batch-${{ matrix.batch }}.txt results-${{ matrix.batch }}
+        env:
+          REQUEST_DELAY: ${{ github.event.inputs.request_delay }}
+        continue-on-error: true  # 即使失败也上传结果
+      
+      - name: Upload results
+        if: steps.check_batch.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-batch-${{ matrix.batch }}
+          path: gmail-checker-playwright/results-${{ matrix.batch }}/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # 合并所有结果
+  merge:
+    needs: check
+    runs-on: ubuntu-latest
+    if: always()  # 即使部分 job 失败也运行
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          pattern: results-batch-*
+      
+      - name: Merge results
+        working-directory: gmail-checker-playwright
+        run: |
+          mkdir -p ../merged-results
+          node merge-results.js ../all-results ../merged-results
+      
+      - name: Upload merged results
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-results
+          path: merged-results/
+          retention-days: 30
+      
+      - name: Show summary
+        run: |
+          echo "## 📊 检查结果" >> $GITHUB_STEP_SUMMARY
+          if [ -f "merged-results/summary.json" ]; then
+            cat merged-results/summary.json >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ 可用用户名" >> $GITHUB_STEP_SUMMARY
+          if [ -f "merged-results/available.txt" ]; then
+            head -20 merged-results/available.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "无" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log
+
+# 结果文件（可选保留）
+# gmail-checker-playwright/available.txt
+# gmail-checker-playwright/failed.txt
+gmail-checker-playwright/progress.json
+gmail-checker-playwright/*.log
+
+# 测试结果
+gmail-checker-playwright/results-*/
+gmail-checker-playwright/test-results/
+
+# 截图
+gmail-checker-playwright/screenshots/
+gmail-checker-playwright/*.png
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,262 @@
+[
+  {
+    "method": "IDT:createAuthUri(key:AIzaSyB6ZO)",
+    "status": "INFO",
+    "detail": "HTTP 400 | {\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"API key not valid. Please pass a valid API key.\",\n    \"errors\": [\n      {\n        \"message\": \"API key not valid. Please pass a valid API key."
+  },
+  {
+    "method": "IDT:createAuthUri-noexist(key:AIzaSyB6ZO)",
+    "status": "INFO",
+    "detail": "HTTP 400 | {\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"API key not valid. Please pass a valid API key.\",\n    \"errors\": [\n      {\n        \"message\": \"API key not valid. Please pass a valid API key."
+  },
+  {
+    "method": "IDT:signInWithPassword-exist(key:AIzaSyB6ZO)",
+    "status": "INFO",
+    "detail": "HTTP 400 | {\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"API key not valid. Please pass a valid API key.\",\n    \"errors\": [\n      {\n        \"message\": \"API key not valid. Please pass a valid API key."
+  },
+  {
+    "method": "IDT:signInWithPassword-noexist(key:AIzaSyB6ZO)",
+    "status": "INFO",
+    "detail": "HTTP 400 | {\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"API key not valid. Please pass a valid API key.\",\n    \"errors\": [\n      {\n        \"message\": \"API key not valid. Please pass a valid API key."
+  },
+  {
+    "method": "IDT:createAuthUri(key:AIzaSyAa8y)",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests from referer https://www.google.com/ are blocked.\",\n    \"errors\": [\n      {\n        \"message\": \"Requests from referer https://www.go"
+  },
+  {
+    "method": "IDT:createAuthUri-noexist(key:AIzaSyAa8y)",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests from referer https://www.google.com/ are blocked.\",\n    \"errors\": [\n      {\n        \"message\": \"Requests from referer https://www.go"
+  },
+  {
+    "method": "IDT:signInWithPassword-exist(key:AIzaSyAa8y)",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests from referer https://www.google.com/ are blocked.\",\n    \"errors\": [\n      {\n        \"message\": \"Requests from referer https://www.go"
+  },
+  {
+    "method": "IDT:signInWithPassword-noexist(key:AIzaSyAa8y)",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests from referer https://www.google.com/ are blocked.\",\n    \"errors\": [\n      {\n        \"message\": \"Requests from referer https://www.go"
+  },
+  {
+    "method": "Login-nonexist",
+    "status": "SUCCESS",
+    "detail": "Found \"not found\": true | URL: https://accounts.google.com/v3/signin/identifier?dsh=S1713935266%3A1770361454869 | Captures: 1"
+  },
+  {
+    "method": "Login-RPC-capture",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/v3/signin/_/AccountsSignInUi/data/batchexecute?rpcids=MI613e&source-path | Response: )]}'\n\n194\n[[\"wrb.fr\",\"MI613e\",\"[null,null,null,null,null,null,null,null,null,null,"
+  },
+  {
+    "method": "Login-exist",
+    "status": "INFO",
+    "detail": "Password page: false | URL: https://accounts.google.com/v3/signin/identifier?dsh=S-821246073%3A1770361464128 | Captures: 2"
+  },
+  {
+    "method": "Login-exist-RPC",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/v3/signin/_/AccountsSignInUi/data/batchexecute?rpcids=MI613e&source-path | Response: )]}'\n\n193\n[[\"wrb.fr\",\"MI613e\",\"[null,null,null,null,null,null,null,null,null,null,"
+  },
+  {
+    "method": "Recovery-nonexist",
+    "status": "SUCCESS",
+    "detail": "Not found: true | Text: 账号恢复\n恢复您的 Google 账号\n邮箱或电话号码\n找不到您的 Google 账号\n下一步\n忘记了邮箱？\n简体中文\n帮助\n隐私权\n条款"
+  },
+  {
+    "method": "Signup-AddSession",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/v3/signin/identifier?dsh=S1746833504%3A1770361480813 | HasName: false"
+  },
+  {
+    "method": "Signup-ServiceLogin",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/v3/signin/identifier?dsh=S1831622309%3A1770361483740 | HasName: false"
+  },
+  {
+    "method": "Signup-NoFlowEntry",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/v3/signin/identifier?dsh=S2130786722%3A1770361486584 | HasName: false"
+  },
+  {
+    "method": "Signup-SignUpDirect",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-1623879574:1770361 | HasName: true"
+  },
+  {
+    "method": "Domain-accounts.google.co.jp",
+    "status": "INFO",
+    "detail": "Final: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S439204713:177036149 | Redirected: true"
+  },
+  {
+    "method": "Domain-accounts.google.co.uk",
+    "status": "INFO",
+    "detail": "Final: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S755507898:177036149 | Redirected: true"
+  },
+  {
+    "method": "Domain-accounts.google.de",
+    "status": "INFO",
+    "detail": "Final: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-2076624251:1770361 | Redirected: true"
+  },
+  {
+    "method": "Domain-accounts.google.fr",
+    "status": "INFO",
+    "detail": "Final: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-1055971831:1770361 | Redirected: true"
+  },
+  {
+    "method": "Domain-accounts.google.com.hk",
+    "status": "INFO",
+    "detail": "Final: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-131462469:17703615 | Redirected: true"
+  },
+  {
+    "method": "People-https://people.googleapis.com/",
+    "status": "INFO",
+    "detail": "HTTP 401 | {\n  \"error\": {\n    \"code\": 401,\n    \"message\": \"Request is missing required authentication credential. Expected OAuth 2 access token, login cookie or other valid authentication credential. "
+  },
+  {
+    "method": "People-https://www.google.com/m8/feed",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"The caller does not have permission\",\n    \"status\": \"PERMISSION_DENIED\"\n  }\n}\n"
+  },
+  {
+    "method": "Gravatar-test@gmail.com",
+    "status": "INFO",
+    "detail": "HTTP 404 | HasAvatar: false"
+  },
+  {
+    "method": "Gravatar-dhjfkjshfk234hjkdhkh@gmail.com",
+    "status": "INFO",
+    "detail": "HTTP 404 | HasAvatar: false"
+  },
+  {
+    "method": "Gravatar-000001@gmail.com",
+    "status": "INFO",
+    "detail": "HTTP 404 | HasAvatar: false"
+  },
+  {
+    "method": "Profile-plus-exist",
+    "status": "FAIL",
+    "detail": "Failed to fetch"
+  },
+  {
+    "method": "Profile-profiles-exist",
+    "status": "FAIL",
+    "detail": "Failed to fetch"
+  },
+  {
+    "method": "OAuth-nonexist",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/signin/oauth/error?authError=ChVyZWRpcmVjdF91cmlfbWl | Text: 使用 Google 账号登录\n禁止访问：此应用的请求无效\n无法登录，因为此应用发送的请求无效。您可稍后再试，也可向开发者求助。 详细了解此错误\n如果您是此应用的开发者，请参阅错误详情。\n错误 400："
+  },
+  {
+    "method": "OAuth-exist",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/signin/oauth/error?authError=ChVyZWRpcmVjdF91cmlfbWl | Text: 使用 Google 账号登录\n禁止访问：此应用的请求无效\n无法登录，因为此应用发送的请求无效。您可稍后再试，也可向开发者求助。 详细了解此错误\n如果您是此应用的开发者，请参阅错误详情。\n错误 400："
+  },
+  {
+    "method": "Cookie-export",
+    "status": "SUCCESS",
+    "detail": "Total: 6 | HttpOnly: 4 | Secure: 6 | Google: 6"
+  },
+  {
+    "method": "Cookie-names",
+    "status": "INFO",
+    "detail": "AEC, __Secure-BUCKET, __Secure-STRP, NID, __Host-GAPS, OTZ"
+  },
+  {
+    "method": "CDP-session",
+    "status": "SUCCESS",
+    "detail": "CDP session 创建成功，Network.enable 已启用"
+  },
+  {
+    "method": "CDP-cookies",
+    "status": "SUCCESS",
+    "detail": "通过 CDP 获取 6 个 cookies"
+  },
+  {
+    "method": "Mobile-signup",
+    "status": "INFO",
+    "detail": "URL: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-1088292084:1770361 | HasName: true"
+  },
+  {
+    "method": "Workspace-webcreateaccount?fl",
+    "status": "INFO",
+    "detail": "Final URL: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-1188986689:1770361"
+  },
+  {
+    "method": "Workspace-signup",
+    "status": "INFO",
+    "detail": "Final URL: https://workspace.google.com/business/signup/accountselect"
+  },
+  {
+    "method": "Workspace-signup?service=mail",
+    "status": "INFO",
+    "detail": "Final URL: https://accounts.google.com/lifecycle/steps/signup/name?dsh=S-602734667:17703615"
+  },
+  {
+    "method": "Chat-hangouts-people",
+    "status": "INFO",
+    "detail": "HTTP 401 | {\n  \"error\": {\n    \"code\": 401,\n    \"message\": \"API keys are not supported by this API. Expected OAuth2 access token or other authentication credentials that assert a principal. See https:/"
+  },
+  {
+    "method": "Chat-chat-api",
+    "status": "INFO",
+    "detail": "HTTP 401 | {\n  \"error\": {\n    \"code\": 401,\n    \"message\": \"Request is missing required authentication credential. Expected OAuth 2 access token, login cookie or other valid authentication credential. "
+  },
+  {
+    "method": "GCP-cloudidentity",
+    "status": "FAIL",
+    "detail": "Failed to fetch"
+  },
+  {
+    "method": "GCP-admin-directory",
+    "status": "INFO",
+    "detail": "HTTP 401 | {\n  \"error\": {\n    \"code\": 401,\n    \"message\": \"Request is missing required authentication credential. Expected OAuth 2 access token, login cookie or other valid authentication credential. "
+  },
+  {
+    "method": "SMTP",
+    "status": "INFO",
+    "detail": "已在 test-smtp.js 中测试，结论：不可靠，Google 返回假阴性"
+  },
+  {
+    "method": "Bounce-analysis",
+    "status": "INFO",
+    "detail": "需要配置 SMTP 发送服务器，无法在浏览器内测试。原理：发送邮件到目标地址，等待 NDR 退信。速度极慢（分钟级），但独立通道。"
+  },
+  {
+    "method": "Calendar-FreeBusy",
+    "status": "INFO",
+    "detail": "HTTP 403 | {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Method doesn't allow unregistered callers (callers without established identity). Please use API Key or other form of API consumer identity t"
+  },
+  {
+    "method": "Drive-API",
+    "status": "INFO",
+    "detail": "HTTP 401 | {\n  \"error\": {\n    \"code\": 401,\n    \"message\": \"Request had invalid authentication credentials. Expected OAuth 2 access token, login cookie or other valid authentication credential. See htt"
+  },
+  {
+    "method": "Drive-sharing",
+    "status": "INFO",
+    "detail": "需要 OAuth token 才能测试共享检测。需要创建 GCP 项目 + OAuth 凭据。"
+  },
+  {
+    "method": "Groups",
+    "status": "FAIL",
+    "detail": "Failed to fetch"
+  },
+  {
+    "method": "MultiContext-3",
+    "status": "SUCCESS",
+    "detail": "3 contexts 并行加载: 3901ms | All loaded: true"
+  },
+  {
+    "method": "3rdParty-emailrep",
+    "status": "FAIL",
+    "detail": "Failed to fetch"
+  },
+  {
+    "method": "3rdParty-disify",
+    "status": "INFO",
+    "detail": "HTTP 200 | {\n    \"format\": true,\n    \"domain\": \"gmail.com\",\n    \"disposable\": false,\n    \"dns\": true,\n    \"whitelist\": true\n}"
+  }
+]
