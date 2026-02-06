@@ -286,8 +286,15 @@ async function main() {
   log(`📁 输出目录: ${outputDir}`);
 
   const browser = await chromium.launch({
-    headless: true,  // CI 环境必须 headless
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+    headless: false,  // 使用 headed 模式 + xvfb 绕过检测
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu'
+    ]
   });
 
   let session = await setupSession(browser);

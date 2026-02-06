@@ -63,6 +63,9 @@ jobs:
         working-directory: gmail-checker-playwright
         run: npx playwright install chromium --with-deps
       
+      - name: Install xvfb
+        run: sudo apt-get install -y xvfb
+      
       - name: Check batch file exists
         id: check_batch
         run: |
@@ -79,9 +82,10 @@ jobs:
         working-directory: gmail-checker-playwright
         run: |
           mkdir -p results-${{ matrix.batch }}
-          node checker-distributed.js batches/batch-${{ matrix.batch }}.txt results-${{ matrix.batch }}
+          xvfb-run --auto-servernum node checker-distributed.js batches/batch-${{ matrix.batch }}.txt results-${{ matrix.batch }}
         env:
           REQUEST_DELAY: ${{ github.event.inputs.request_delay }}
+        timeout-minutes: 60
         continue-on-error: true  # 即使失败也上传结果
       
       - name: Upload results
