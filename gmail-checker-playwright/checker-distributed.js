@@ -98,8 +98,8 @@ process.on('SIGTERM', gracefulExit);
 
 // ==================== API 检查函数 ====================
 
-async function checkUsernameAPI(page, username, xsrfToken, tlToken) {
-  return await page.evaluate(async ({ username, xsrfToken, tlToken }) => {
+async function checkUsernameAPI(page, username, xsrfToken, tlToken, debug = false) {
+  return await page.evaluate(async ({ username, xsrfToken, tlToken, debug }) => {
     const innerData = `["${username}",1,0,null,[null,null,null,null,0,${Date.now() % 1000000}],0,40]`;
     const reqData = `[["NHJMOd",${JSON.stringify(innerData)},null,"generic"]]`;
     const body = `f.req=${encodeURIComponent(`[${reqData}]`)}&at=${encodeURIComponent(xsrfToken)}&`;
@@ -117,7 +117,9 @@ async function checkUsernameAPI(page, username, xsrfToken, tlToken) {
         xhr.send(body);
       });
 
-      if (result.status !== 200) return { status: 'error', reason: `HTTP ${result.status}` };
+      if (result.status !== 200) {
+        return { status: 'error', reason: `HTTP ${result.status}`, raw: debug ? result.text.substring(0, 500) : undefined };
+      }
 
       let inner = null;
       const lines = result.text.split('\n');
@@ -131,7 +133,9 @@ async function checkUsernameAPI(page, username, xsrfToken, tlToken) {
         }
       }
 
-      if (!inner) return { status: 'error', reason: '响应解析失败' };
+      if (!inner) {
+        return { status: 'error', reason: '响应解析失败', raw: debug ? result.text.substring(0, 500) : undefined };
+      }
 
       const flat = JSON.stringify(inner);
       if (flat.includes('steps/signup/password')) return { status: 'available' };
@@ -143,7 +147,7 @@ async function checkUsernameAPI(page, username, xsrfToken, tlToken) {
     } catch (e) {
       return { status: 'error', reason: e.message.substring(0, 40) };
     }
-  }, { username, xsrfToken, tlToken });
+  }, { username, xsrfToken, tlToken, debug });
 }
 
 // ==================== Session 建立 ====================
@@ -304,10 +308,52 @@ async function main() {
     process.exit(1);
   }
 
-  // 探针验证
-  const probe = await checkUsernameAPI(session.page, PROBE_USERNAME, session.xsrfToken, session.tlToken);
-  if (probe.status !== 'available') {
-    log(`❌ 探针失败: ${probe.status} ${probe.reason || ''}`);
+  // 探针验证（带调试 + 重试）
+  let probeOk = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    log(`探针验证 (尝试 ${attempt}/3)...`);
+    
+    // 先截图看看当前页面状态
+    try {
+      const screenshotPath = path.join(outputDir, `debug-page-attempt${attempt}.png`);
+      await session.page.screenshot({ path: screenshotPath });
+      log(`截图已保存: ${screenshotPath}`);
+    } catch (e) { log(`截图失败: ${e.message}`); }
+    
+    // 打印当前 URL
+    log(`当前页面 URL: ${session.page.url()}`);
+    
+    // 打印页面标题
+    try {
+      const title = await session.page.title();
+      log(`页面标题: ${title}`);
+    } catch {}
+    
+    const probe = await checkUsernameAPI(session.page, PROBE_USERNAME, session.xsrfToken, session.tlToken, true);
+    log(`探针结果: ${JSON.stringify(probe)}`);
+    
+    if (probe.status === 'available') {
+      probeOk = true;
+      break;
+    }
+    
+    // 探针失败，尝试重建 session
+    if (attempt < 3) {
+      log(`探针失败，等待 5s 后重建 session...`);
+      await new Promise(r => setTimeout(r, 5000));
+      try { await session.ctx.close(); } catch {}
+      session = await setupSession(browser);
+      if (!session.ok) {
+        log(`Session 重建失败`);
+        continue;
+      }
+    }
+  }
+  
+  if (!probeOk) {
+    log('❌ 探针 3 次尝试全部失败，退出');
+    // 上传调试截图
+    saveProgress();
     await browser.close();
     process.exit(1);
   }
