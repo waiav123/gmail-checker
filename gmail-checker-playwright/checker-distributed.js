@@ -552,6 +552,7 @@ async function main() {
     } else {
       appendToFile(FAILED_FILE, `${username}\t${result.status}${result.reason ? ':' + result.reason : ''}`);
       failedCount++;
+      log(`❌ ${username} — ${result.status}${result.reason ? ': ' + result.reason : ''}`);
     }
 
     // 定期保存和报告
