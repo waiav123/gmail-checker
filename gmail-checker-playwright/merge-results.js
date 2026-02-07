@@ -33,26 +33,31 @@ console.log(`📁 找到 ${subdirs.length} 个结果目录`);
 
 for (const subdir of subdirs) {
   const subdirPath = path.join(resultsDir, subdir);
+  let subdirAvailable = 0, subdirFailed = 0, subdirDegraded = 0;
   
   // 读取 available.txt
   const availableFile = path.join(subdirPath, 'available.txt');
   if (fs.existsSync(availableFile)) {
     const lines = fs.readFileSync(availableFile, 'utf-8').split('\n').filter(s => s.trim());
-    lines.forEach(l => availableSet.add(l.trim()));
+    lines.forEach(l => { if (!availableSet.has(l.trim())) subdirAvailable++; availableSet.add(l.trim()); });
   }
   
-  // 读取 failed.txt
+  // 读取 failed.txt（用 tab 前的用户名部分去重）
   const failedFile = path.join(subdirPath, 'failed.txt');
   if (fs.existsSync(failedFile)) {
     const lines = fs.readFileSync(failedFile, 'utf-8').split('\n').filter(s => s.trim());
-    lines.forEach(l => failedSet.add(l.trim()));
+    lines.forEach(l => {
+      const username = l.trim().split('\t')[0];
+      if (username && !failedSet.has(username)) subdirFailed++;
+      if (username) failedSet.add(username);
+    });
   }
   
   // 读取 degraded.txt
   const degradedFile = path.join(subdirPath, 'degraded.txt');
   if (fs.existsSync(degradedFile)) {
     const lines = fs.readFileSync(degradedFile, 'utf-8').split('\n').filter(s => s.trim());
-    lines.forEach(l => degradedSet.add(l.trim()));
+    lines.forEach(l => { if (!degradedSet.has(l.trim())) subdirDegraded++; degradedSet.add(l.trim()); });
   }
   
   // 读取 progress.json
@@ -64,10 +69,7 @@ for (const subdir of subdirs) {
     } catch {}
   }
   
-  console.log(`  ${subdir}: ✅${availableSet.size - totalProgress.availableCount} ❌${failedSet.size - totalProgress.failedCount} ⚠️${degradedSet.size - totalProgress.degradedCount}`);
-  totalProgress.availableCount = availableSet.size;
-  totalProgress.failedCount = failedSet.size;
-  totalProgress.degradedCount = degradedSet.size;
+  console.log(`  ${subdir}: ✅${subdirAvailable} ❌${subdirFailed} ⚠️${subdirDegraded}`);
 }
 
 // 写入合并结果

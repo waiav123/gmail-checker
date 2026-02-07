@@ -7,13 +7,13 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 // ==================== 配置 ====================
 const CONFIG = {
   CONTEXT_COUNT: parseInt(process.env.CONTEXT_COUNT) || parseInt(process.argv[4]) || 3,
-  REQUEST_DELAY: parseInt(process.env.REQUEST_DELAY) || 500,
-  GLOBAL_MAX_RPS: parseFloat(process.env.MAX_RPS) || 3.5,
-  PROBE_INTERVAL: 60,
+  GLOBAL_MAX_RPS: parseFloat(process.env.MAX_RPS) || (1000 / (parseInt(process.env.REQUEST_DELAY) || 500)) * (parseInt(process.env.CONTEXT_COUNT) || parseInt(process.argv[4]) || 3) * 0.8,
+  PROBE_INTERVAL: 10,
   MAX_CONSECUTIVE_DEGRADE: 6,
   SESSION_REFRESH_ERRORS: 4,
   RATE_LIMIT_DELAY: 60000,
@@ -22,7 +22,76 @@ const CONFIG = {
   WORKER_STAGGER_DELAY: 800,
 };
 
-const PROBE_USERNAME = 'dhjfkjshfk234hjkdhkh';
+// 多个探针用户名轮换，避免单一用户名被标记
+const PROBE_USERNAMES = [
+  '15asdfsh6238741454ssdf',
+  'xkq9w7m2vbn4zt8plj3e',
+  'hf6ry2ucd0gw8nxm4qas',
+  'zt3bk7pej9wm1xvn5olf',
+  'qm8dw4ycr2hn6xtj0vbk',
+];
+let probeIndex = 0;
+function getNextProbe() {
+  const name = PROBE_USERNAMES[probeIndex % PROBE_USERNAMES.length];
+  probeIndex++;
+  return name;
+}
+
+// ==================== Supabase 实时写入 ====================
+// 注意：生产环境应通过环境变量传入凭证，硬编码值仅为本地开发 fallback
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hnulerrraqsuhdtgucsd.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhudWxlcnJyYXFzdWhkdGd1Y3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MDk3NjMsImV4cCI6MjA4NTk4NTc2M30.JoijFPXyzvg8y9E8r7l0m3Tqz19-nC8Xyn8RyjtUEng';
+const SUPABASE_BATCH_ID = process.env.BATCH_ID || path.basename(process.argv[2] || 'unknown', '.txt');
+const SUPABASE_ACCOUNT = process.env.GITHUB_REPOSITORY_OWNER || 'local';
+
+// 缓冲队列：攒够 N 条或 M 秒后批量写入，不阻塞主流程
+const supabaseBuffer = [];
+const SUPABASE_FLUSH_SIZE = 20;
+const SUPABASE_FLUSH_INTERVAL = 10000; // 10秒
+
+function supabaseInsert(username, status, reason) {
+  supabaseBuffer.push({ username, status, reason: reason || null, batch_id: SUPABASE_BATCH_ID, account: SUPABASE_ACCOUNT });
+  if (supabaseBuffer.length >= SUPABASE_FLUSH_SIZE) flushSupabase();
+}
+
+function flushSupabase(waitForComplete = false) {
+  if (supabaseBuffer.length === 0) return waitForComplete ? Promise.resolve() : undefined;
+  const rows = supabaseBuffer.splice(0);
+  const body = JSON.stringify(rows);
+  const url = new URL(`${SUPABASE_URL}/rest/v1/gmail_results`);
+  const options = {
+    hostname: url.hostname,
+    path: url.pathname,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Prefer': 'return=minimal',
+    },
+  };
+  const promise = new Promise(resolve => {
+    const req = https.request(options, res => {
+      if (res.statusCode >= 400) {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => { log(`⚠️ Supabase 写入失败 (${res.statusCode}): ${data.substring(0, 100)}`); resolve(); });
+      } else {
+        res.resume();
+        res.on('end', resolve);
+      }
+    });
+    req.on('error', () => resolve()); // 静默失败，不影响主流程
+    req.setTimeout(10000, () => { req.destroy(); resolve(); });
+    req.write(body);
+    req.end();
+  });
+  return waitForComplete ? promise : undefined;
+}
+
+// 定时刷新缓冲（unref 防止阻止进程退出）
+const flushTimer = setInterval(flushSupabase, SUPABASE_FLUSH_INTERVAL);
+flushTimer.unref();
 
 // ==================== 文件路径 ====================
 const inputFile = process.argv[2];
@@ -49,14 +118,19 @@ class GlobalRateLimiter {
     this.currentMinInterval = this.minInterval;
     this.recentDegrades = 0;
     this.recentSuccesses = 0;
+    this._queue = Promise.resolve(); // 串行化请求队列
   }
-  async acquire() {
-    const now = Date.now();
-    const elapsed = now - this.lastRequest;
-    if (elapsed < this.currentMinInterval) {
-      await new Promise(r => setTimeout(r, this.currentMinInterval - elapsed));
-    }
-    this.lastRequest = Date.now();
+  acquire() {
+    // 用 promise 链串行化，避免多 worker 并发竞态
+    this._queue = this._queue.then(async () => {
+      const now = Date.now();
+      const elapsed = now - this.lastRequest;
+      if (elapsed < this.currentMinInterval) {
+        await new Promise(r => setTimeout(r, this.currentMinInterval - elapsed));
+      }
+      this.lastRequest = Date.now();
+    });
+    return this._queue;
   }
   onDegrade() {
     this.recentDegrades++;
@@ -91,11 +165,12 @@ function log(msg) {
 
 function saveProgress() {
   try {
+    // 只保存计数和索引，不序列化整个 processed Set（避免阻塞事件循环）
     fs.writeFileSync(PROGRESS_FILE, JSON.stringify({
       totalChecked, availableCount, failedCount, degradedCount, originalTotal,
-      processed: Array.from(processed),
+      processedCount: processed.size,
       timestamp: new Date().toISOString()
-    }, null, 2));
+    }));
   } catch {}
 }
 
@@ -103,13 +178,24 @@ function loadProgress() {
   try {
     if (fs.existsSync(PROGRESS_FILE)) {
       const data = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf-8'));
-      data.processed.forEach(u => processed.add(u));
       totalChecked = data.totalChecked || 0;
       availableCount = data.availableCount || 0;
       failedCount = data.failedCount || 0;
       degradedCount = data.degradedCount || 0;
       originalTotal = data.originalTotal || 0;
-      log(`恢复进度: ${totalChecked} 已处理, ${availableCount} 可用, ${failedCount} 失败, ${degradedCount} 降级`);
+      // 从结果文件重建 processed Set（比序列化整个 Set 更可靠）
+      for (const file of [AVAILABLE_FILE, DEGRADED_FILE]) {
+        if (fs.existsSync(file)) {
+          fs.readFileSync(file, 'utf-8').split('\n').filter(s => s.trim()).forEach(u => processed.add(u.trim()));
+        }
+      }
+      if (fs.existsSync(FAILED_FILE)) {
+        fs.readFileSync(FAILED_FILE, 'utf-8').split('\n').filter(s => s.trim()).forEach(line => {
+          const username = line.split('\t')[0].trim();
+          if (username) processed.add(username);
+        });
+      }
+      log(`恢复进度: ${processed.size} 已处理, ${availableCount} 可用, ${failedCount} 失败, ${degradedCount} 降级`);
     }
   } catch {}
 }
@@ -128,9 +214,18 @@ function gracefulExit() {
   isShuttingDown = true;
   log('保存进度并退出...');
   saveProgress();
-  const { speed } = getStats();
-  log(`最终统计: ${totalChecked} 已处理 | ✅${availableCount} ❌${failedCount} ⚠️${degradedCount} | ${speed.toFixed(2)}/s`);
-  process.exit(0);
+  // 总超时保护：最多等 8 秒，防止 Supabase 请求卡住
+  const exitTimer = setTimeout(() => {
+    log('⚠️ 超时强制退出');
+    process.exit(1);
+  }, 8000);
+  exitTimer.unref();
+  flushSupabase(true).then(() => {
+    clearTimeout(exitTimer);
+    const { speed } = getStats();
+    log(`最终统计: ${totalChecked} 已处理 | ✅${availableCount} ❌${failedCount} ⚠️${degradedCount} | ${speed.toFixed(2)}/s`);
+    process.exit(0);
+  });
 }
 
 process.on('SIGINT', gracefulExit);
@@ -139,7 +234,9 @@ process.on('SIGTERM', gracefulExit);
 // ==================== API 检查函数 ====================
 async function checkUsernameAPI(page, username, xsrfToken, tlToken, debug = false) {
   return await page.evaluate(async ({ username, xsrfToken, tlToken, debug }) => {
-    const innerData = `["${username}",1,0,null,[null,null,null,null,0,${Date.now() % 1000000}],0,40]`;
+    // 转义用户名中的特殊字符，防止 JSON 注入
+    const safeUsername = username.replace(/[\\"]/g, '');
+    const innerData = `["${safeUsername}",1,0,null,[null,null,null,null,0,${Date.now() % 1000000}],0,40]`;
     const reqData = `[["NHJMOd",${JSON.stringify(innerData)},null,"generic"]]`;
     const body = `f.req=${encodeURIComponent(`[${reqData}]`)}&at=${encodeURIComponent(xsrfToken)}&`;
     const url = `/lifecycle/_/AccountLifecyclePlatformSignupUi/data/batchexecute?rpcids=NHJMOd&TL=${encodeURIComponent(tlToken)}&rt=c&_reqid=${Math.floor(Math.random() * 900000) + 100000}`;
@@ -306,12 +403,16 @@ async function worker(session, browser, getNextUsername) {
 
     // 探针检测
     if (session.requestCount > 0 && session.requestCount % CONFIG.PROBE_INTERVAL === 0) {
-      const probe = await checkUsernameAPI(session.page, PROBE_USERNAME, session.xsrfToken, session.tlToken);
-      if (probe.status !== 'available') {
-        log(`${label} ⚠️ 探针异常，刷新 session...`);
+      const probeName = getNextProbe();
+      await rateLimiter.acquire();
+      const probe = await checkUsernameAPI(session.page, probeName, session.xsrfToken, session.tlToken);
+      if (probe.status === 'available') {
+        log(`${label} 🔍 探针通过 (${probeName})`);
+      } else {
+        log(`${label} ⚠️ 探针异常 (${probeName}): ${probe.status}，刷新 session...`);
         try { await session.ctx.close(); } catch {}
         session = await setupSession(browser, session.id);
-        if (!session.ok) { log(`${label} Session 刷新失败`); break; }
+        if (!session.ok) { log(`${label} Session 刷新失败`); try { await session.ctx.close(); } catch {} break; }
         session.degradeCount = 0;
       }
     }
@@ -337,7 +438,7 @@ async function worker(session, browser, getNextUsername) {
         try { await session.ctx.close(); } catch {}
         session = await setupSession(browser, session.id);
         session.degradeCount = 0;
-        if (!session.ok) break;
+        if (!session.ok) { try { await session.ctx.close(); } catch {} break; }
         retryUsername = username;
         continue;
       }
@@ -346,6 +447,7 @@ async function worker(session, browser, getNextUsername) {
       totalChecked++;
       appendToFile(DEGRADED_FILE, username);
       degradedCount++;
+      supabaseInsert(username, 'degraded');
       log(`${label} ⚠️ ${username} — 降级未确认`);
       continue;
     }
@@ -370,7 +472,7 @@ async function worker(session, browser, getNextUsername) {
         try { await session.ctx.close(); } catch {}
         session = await setupSession(browser, session.id);
         consecutiveErrors = 0;
-        if (!session.ok) break;
+        if (!session.ok) { try { await session.ctx.close(); } catch {} break; }
         retryUsername = username;
         continue;
       }
@@ -380,6 +482,7 @@ async function worker(session, browser, getNextUsername) {
       totalChecked++;
       appendToFile(FAILED_FILE, `${username}\terror:${result.reason}`);
       failedCount++;
+      supabaseInsert(username, 'error', result.reason);
       consecutiveErrors = 0;
       continue;
     }
@@ -391,10 +494,12 @@ async function worker(session, browser, getNextUsername) {
     if (result.status === 'available') {
       appendToFile(AVAILABLE_FILE, username);
       availableCount++;
+      supabaseInsert(username, 'available');
       log(`${label} ✅ ${username} — 可用!`);
     } else {
       appendToFile(FAILED_FILE, `${username}\t${result.status}${result.reason ? ':' + result.reason : ''}`);
       failedCount++;
+      supabaseInsert(username, result.status, result.reason);
       log(`${label} ❌ ${username} — ${result.status}${result.reason ? ': ' + result.reason : ''}`);
     }
 
@@ -419,7 +524,7 @@ async function main() {
   loadProgress();
 
   const allRaw = fs.readFileSync(inputFile, 'utf-8').split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'));
-  if (!originalTotal) originalTotal = allRaw.length + processed.size;
+  if (!originalTotal) originalTotal = allRaw.length;
   allUsernames = allRaw.filter(s => !processed.has(s));
 
   if (allUsernames.length === 0) { log('✅ 全部完成'); process.exit(0); }
@@ -440,7 +545,8 @@ async function main() {
     try {
       const s = await setupSession(browser, i);
       if (s.ok) {
-        const probe = await checkUsernameAPI(s.page, PROBE_USERNAME, s.xsrfToken, s.tlToken, true);
+        const probeName = getNextProbe();
+        const probe = await checkUsernameAPI(s.page, probeName, s.xsrfToken, s.tlToken, true);
         if (probe.status === 'available') {
           sessions.push(s);
           log(`[S${i}] ✅ 探针通过`);
@@ -477,6 +583,7 @@ async function main() {
   await Promise.all(workerPromises);
 
   saveProgress();
+  await flushSupabase(true);
   const { elapsed, speed } = getStats();
   log('='.repeat(50));
   log(`✅ 可用: ${availableCount}  ❌ 失败: ${failedCount}  ⚠️ 降级: ${degradedCount}  📊 总计: ${totalChecked}`);

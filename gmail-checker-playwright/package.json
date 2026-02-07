@@ -5,9 +5,13 @@
   "main": "checker-auto.js",
   "scripts": {
     "start": "node checker-auto.js",
-    "check": "node checker-auto.js"
+    "check": "node checker-auto.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
   }
 }

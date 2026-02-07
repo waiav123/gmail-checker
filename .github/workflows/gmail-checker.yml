@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 240
     strategy:
       matrix:
-        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
       fail-fast: false
       max-parallel: 20
     steps:
@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: gmail-checker-playwright/package-lock.json
       - name: Install deps
         working-directory: gmail-checker-playwright
-        run: npm ci
+        run: npm ci || npm install
       - name: Install Playwright
         working-directory: gmail-checker-playwright
         run: npx playwright install chromium --with-deps
