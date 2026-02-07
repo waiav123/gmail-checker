@@ -1,8 +1,8 @@
 {
-  "totalChecked": 333340,
+  "totalChecked": 234950,
   "availableCount": 0,
-  "failedCount": 330026,
-  "degradedCount": 3314,
-  "mergedAt": "2026-02-07T02:05:12.484Z",
-  "sources": 14
+  "failedCount": 230816,
+  "degradedCount": 4740,
+  "mergedAt": "2026-02-07T06:30:26.295Z",
+  "sources": 13
 }
